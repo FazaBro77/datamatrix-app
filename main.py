@@ -19,13 +19,15 @@ def index():
         <style>
             body { font-family: system-ui, sans-serif; padding: 24px; max-width: 480px; margin: auto; }
             input, button { width: 100%; margin: 12px 0; padding: 12px; font-size: 16px; box-sizing: border-box; }
-            button { background: #0070f3; color: white; border: none; border-radius: 8px; font-weight: bold; }
+            button { background: #0070f3; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+            .hint { font-size: 13px; color: #666; margin-top: -8px; margin-bottom: 12px; }
         </style>
     </head>
     <body>
         <h2>PDF &rarr; GoLabel (znak.txt)</h2>
         <form action="/process" method="post" enctype="multipart/form-data">
             <input type="file" name="file" accept="application/pdf" required />
+            <div class="hint">Файл отправляется сразу на быструю обработку</div>
             <button type="submit">Обработать и скачать</button>
         </form>
     </body>
@@ -45,23 +47,30 @@ async def process_pdf(file: UploadFile = File(...)):
         doc = fitz.open(stream=content, filetype="pdf")
         for page_idx in range(len(doc)):
             page = doc[page_idx]
-            pix = page.get_pixmap(dpi=300)
+
+            # 150 DPI вместо 300: ускоряет рендеринг и сканирование в 4 раза
+            pix = page.get_pixmap(dpi=150)
             img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
                 pix.h, pix.w, pix.n
             )
 
+            # Перевод в ч/б
             gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if pix.n >= 3 else img
+
+            # Быстрое декодирование
             barcodes = decode(gray)
             barcodes.sort(key=lambda b: (b.rect.top, b.rect.left))
 
             for b in barcodes:
                 raw_codes.append(b.data.decode("utf-8", errors="ignore"))
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка обработки: {e}")
 
     if not raw_codes:
         raise HTTPException(
-            status_code=422, detail="Коды DataMatrix не найдены"
+            status_code=422,
+            detail="Коды DataMatrix не найдены (попробуйте более четкий PDF)",
         )
 
     output_text = "KM\r\n" + "\r\n".join(raw_codes) + "\r\n"
