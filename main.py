@@ -8,7 +8,7 @@ from pylibdmtx.pylibdmtx import decode
 app = FastAPI()
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def index():
     return """
     <!DOCTYPE html>
